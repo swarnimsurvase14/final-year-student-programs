@@ -1,6 +1,7 @@
 # Programs built by Final Year Students
 
-# Structure
+## Structure
+```
 ❯ tree --gitignore -d
 .
 ├── aishwarya-ashok-patil-personalized-news-agent
@@ -15,3 +16,4 @@
 └── swarnim-survase-to-do-list
 
 11 directories
+```
