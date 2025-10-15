@@ -1,0 +1,10 @@
+# Dependencies
+/node_modules
+
+# Secrets & Environment Variables
+.env
+
+# Netlify/VS Code Cache
+.netlify/
+*.log/node_modules
+.env
