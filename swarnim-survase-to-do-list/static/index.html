@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI To-Do List Agent (Production Ready)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Ensures the date input color is manageable in both themes */
+    input[type="date"] {
+        color-scheme: dark; 
+        background-color: #334155; 
+        border-radius: 0.5rem;
+        padding: 0.5rem;
+    }
+    /* Base Dark Mode Classes (Default) */
+    .dark-mode {
+        transition: background-color 0.3s, color 0.3s;
+    }
+    /* Light Mode Classes: Define the visual changes for the body and card */
+    .light-mode {
+        background-color: #f8fafc; /* slate-50 */
+        color: #1e293b; /* slate-900 */
+    }
+    .light-mode .card {
+        background-color: #ffffff; /* white */
+    }
+    /* Added styles for the modal overlay */
+    .modal-overlay {
+        z-index: 100;
+        background-color: rgba(0, 0, 0, 0.8);
+    }
+    /* CRITICAL FIX: Ensure task input and suggestion box use consistent styling */
+    .suggestion-box-style {
+        border: 1px solid rgb(71 85 105); /* slate-600 */
+        background-color: rgba(51, 65, 85, 0.7); /* slate-700/70 */
+    }
+  </style>
+</head>
+<body class="bg-slate-900 flex items-center justify-center min-h-screen text-slate-100 dark-mode">
+  
+  <div class="w-full max-w-2xl bg-slate-800 p-8 rounded-xl shadow-2xl shadow-slate-950/70 card">
+    
+    <div id="addTaskScreen" class="space-y-5">
+      <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-extrabold text-indigo-400 tracking-wide">AI To-Do List Agent</h1>
+        <button onclick="toggleTheme()" id="themeToggle" class="p-2 rounded-full bg-slate-700/50 hover:bg-indigo-600/50 transition duration-150">
+          <span id="themeIcon">☀️</span>
+        </button>
+      </div>
+      
+      <textarea id="taskInput" rows="3" placeholder="e.g. Finish urgent homework tomorrow 5pm" 
+        class="w-full p-4 rounded-lg suggestion-box-style text-slate-100 
+               focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition duration-200"
+        oninput="handleInput(this.value)"></textarea>
+      
+      <div id="suggestionsBoxContainer" class="h-40 mt-2"> 
+        <div id="suggestionsBox" class="suggestion-box-style p-2 rounded-lg text-sm space-y-2 border border-indigo-600/50 h-full overflow-y-auto">
+           <div class="text-center text-slate-400 p-2">Type a task idea to see suggestions...</div>
+        </div>
+      </div>
+
+      <button onclick="addTask()" class="w-full bg-indigo-600 hover:bg-indigo-700 py-3 rounded-full font-bold shadow-md 
+               shadow-indigo-500/30 transition duration-150 disabled:bg-gray-500 disabled:cursor-not-allowed">
+        Add Task
+      </button>
+      <button onclick="showList()" class="w-full bg-emerald-600 hover:bg-emerald-700 py-3 rounded-full font-bold shadow-md transition duration-150">
+        View Tasks
+      </button>
+    </div>
+    
+    <div id="taskListScreen" class="hidden space-y-5">
+      <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-extrabold text-indigo-400 tracking-wide">Your Tasks</h1>
+        <button onclick="toggleTheme()" class="p-2 rounded-full bg-slate-700/50 hover:bg-indigo-600/50 transition duration-150">
+          <span id="themeIcon2">☀️</span>
+        </button>
+      </div>
+      <ul id="taskList" class="space-y-4"></ul>
+
+      <h2 class="text-lg font-extrabold pt-2 border-t border-slate-700">✅ Completed</h2>
+      <ul id="completedList" class="space-y-4"></ul>
+
+      <button onclick="backToAdd()" class="w-full bg-purple-600 hover:bg-purple-700 py-3 rounded-full font-bold mt-6 shadow-md transition duration-150">
+        Add More
+      </button>
+    </div>
+    
+  </div>
+  
+  <div id="editModal" class="fixed inset-0 modal-overlay hidden flex items-center justify-center">
+    <div class="bg-slate-700 p-6 rounded-lg shadow-2xl w-full max-w-sm transform transition-all duration-300">
+      <h2 class="text-xl font-bold mb-4 text-indigo-300">Edit Task</h2>
+      <input type="hidden" id="editTaskIndex">
+      <div class="space-y-4">
+        <div>
+          <label for="editText" class="block text-sm font-medium text-slate-300 mb-1">Task Description</label>
+          <input type="text" id="editText" class="w-full p-2 rounded-md bg-slate-600 border border-slate-500 focus:ring-indigo-500 focus:border-indigo-500 text-slate-50">
+        </div>
+        <div>
+          <label for="editDate" class="block text-sm font-medium text-slate-300 mb-1">Due Date</label>
+          <input type="date" id="editDate" class="w-full p-2 rounded-md bg-slate-600 border border-slate-500 focus:ring-indigo-500 focus:border-indigo-500 text-slate-50">
+          <p class="text-xs text-slate-400 mt-1">Leave blank to use the AI's complex time/date phrase.</p>
+        </div>
+        <div>
+          <label for="editEffort" class="block text-sm font-medium text-slate-300 mb-1">Effort Score</label>
+          <select id="editEffort" class="w-full p-2 rounded-md bg-slate-600 border border-slate-500 text-slate-50">
+            <option value="Critical">Critical</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+            <option value="Unspecified">Unspecified</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex justify-end space-x-3 mt-6">
+        <button onclick="closeEditModal()" class="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-600 rounded-full hover:bg-slate-500 transition duration-150">Cancel</button>
+        <button onclick="saveEdit()" class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-full hover:bg-indigo-700 transition duration-150">Save Changes</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    let tasks = [];
+    let completed = [];
+    let suggestionTimeout = null; // FIX: Declaring the global variable
+
+    // ===========================================
+    // STORAGE HELPER FUNCTIONS
+    // ===========================================
+    function loadTasks() {
+        const storedTasks = localStorage.getItem('ai_tasks');
+        const storedCompleted = localStorage.getItem('ai_completed');
+        
+        if (storedTasks) tasks = JSON.parse(storedTasks);
+        if (storedCompleted) completed = JSON.parse(storedCompleted);
+    }
+
+    function saveTasks() {
+        localStorage.setItem('ai_tasks', JSON.stringify(tasks));
+        localStorage.setItem('ai_completed', JSON.stringify(completed));
+    }
+    
+    // ===========================================
+    // THEME LOGIC
+    // ===========================================
+    const mainCard = document.querySelector('.card');
+
+    function applyTheme(isDark) {
+        const body = document.body;
+        const icon1 = document.getElementById('themeIcon');
+        const icon2 = document.getElementById('themeIcon2');
+        const input = document.getElementById('taskInput');
+        const modalInputs = document.querySelectorAll('#editModal input[type="text"], #editModal select, #editModal input[type="date"]');
+        const modalContainer = document.querySelector('#editModal > div');
+
+
+        // --- Core Body and Card Class Swapping ---
+        if (isDark) {
+            body.classList.replace('light-mode', 'dark-mode');
+            mainCard.classList.replace('bg-white', 'bg-slate-800');
+            body.classList.remove('text-gray-800', 'bg-slate-50');
+            body.classList.add('text-slate-100', 'bg-slate-900');
+
+            // Apply Dark Mode input colors
+            input.classList.add('bg-slate-700/70', 'text-slate-100', 'border-slate-600');
+            input.classList.remove('bg-gray-200', 'text-gray-800', 'border-gray-400');
+            modalContainer.classList.replace('bg-white', 'bg-slate-700');
+            
+            icon1.innerHTML = '☀️';
+            if (icon2) icon2.innerHTML = '☀️';
+        } else {
+            // Apply Light Mode
+            body.classList.replace('dark-mode', 'light-mode');
+            mainCard.classList.replace('bg-slate-800', 'bg-white');
+            body.classList.remove('text-slate-100', 'bg-slate-900');
+            body.classList.add('text-gray-800', 'bg-slate-50');
+
+            // Apply Light Mode input colors
+            input.classList.remove('bg-slate-700/70', 'text-slate-100', 'border-slate-600');
+            input.classList.add('bg-gray-200', 'text-gray-800', 'border-gray-400');
+            modalContainer.classList.replace('bg-slate-700', 'bg-white');
+
+
+            icon1.innerHTML = '🌙';
+            if (icon2) icon2.innerHTML = '🌙';
+        }
+        
+        // Update all modal inputs (text, select, date)
+        modalInputs.forEach(el => {
+             if (isDark) {
+                el.classList.add('bg-slate-600', 'text-slate-50');
+                el.classList.remove('bg-white', 'text-gray-800');
+            } else {
+                el.classList.remove('bg-slate-600', 'text-slate-50');
+                el.classList.add('bg-white', 'text-gray-800');
+            }
+        });
+
+
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    }
+
+    function toggleTheme() {
+        const isCurrentlyDark = document.body.classList.contains('dark-mode');
+        applyTheme(!isCurrentlyDark); 
+    }
+
+    function loadInitialTheme() {
+        const savedTheme = localStorage.getItem('theme');
+        const shouldBeDark = (savedTheme === 'dark' || savedTheme === null);
+        applyTheme(shouldBeDark); 
+    }
+    
+    // ===========================================
+    // EXTERNAL API ENDPOINTS
+    // ===========================================
+    const API_BASE_URL = 'https://to-do-list-a-i-agent.onrender.com'; 
+    const API_ANALYZE_ENDPOINT = API_BASE_URL + '/api/analyze'; 
+    const API_SUGGEST_ENDPOINT = API_BASE_URL + '/api/suggest'; 
+
+
+    // --- INITIAL SETUP AND DATA LOAD ---
+    requestNotificationPermission(); 
+    loadTasks();
+    loadInitialTheme(); // Load saved theme setting
+    
+    
+    // ===========================================
+    // UTILITY FUNCTIONS & REMINDERS
+    // ===========================================
+    
+    function formatDateToInput(timeStr) {
+        if (timeStr && timeStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+            return timeStr.substring(0, 10);
+        }
+        return '';
+    }
+
+    function requestNotificationPermission() {
+        if (!("Notification" in window)) return;
+        if (Notification.permission !== "granted" && Notification.permission !== "denied") {
+            Notification.requestPermission();
+        }
+    }
+    
+    function scheduleReminder(task) {
+        let targetTimeStr = task.time.match(/(\d{4}-\d{2}-\d{2})/) ? task.time : task.time + ' 09:00';
+        
+        let targetDate = new Date(targetTimeStr);
+
+        if (isNaN(targetDate.getTime()) || task.time.toLowerCase().includes('unspecified')) {
+            return; 
+        }
+
+        let now = new Date();
+        let delay = targetDate.getTime() - now.getTime();
+
+        if (delay > 0 && delay < 2073600000) { 
+            setTimeout(() => {
+                if (Notification.permission === "granted") {
+                    new Notification("⏳ TASK DUE SOON!", {
+                        body: task.text + " - Category: " + task.category,
+                        icon: 'https://placehold.co/60x60/4f46e5/white?text=AI', 
+                        tag: 'task-' + Date.now() 
+                    });
+                }
+            }, delay);
+        }
+    }
+
+
+    // ===========================================
+    // LOCAL FALLBACK LOGIC
+    // ===========================================
+    function analyzeTaskFallback(text) {
+        let task = { 
+            text, 
+            time: "unspecified", 
+            category: "General", 
+            urgent: false, 
+            note: "⚠️ Using simplified local analysis. Time/Date may be inaccurate.", 
+            effort_score: "Low",
+            status: "Pending" 
+        };
+
+        if (text.match(/urgent|asap|important/i)) {
+            task.urgent = true;
+            task.note = "⚠️ Fallback: This looks urgent!";
+            task.effort_score = "High";
+        }
+        if (text.match(/tomorrow/i)) task.time = "Tomorrow";
+        else if (text.match(/today/i)) task.time = "Today";
+        
+        if (text.match(/homework|study|assignment/i)) task.category = "Study";
+        else if (text.match(/meeting|work|project/i)) task.category = "Work";
+
+        return task;
+    }
+
+
+    // ===========================================
+    // AI SUGGESTION LOGIC
+    // ===========================================
+    
+    function handleInput(text) {
+        clearTimeout(suggestionTimeout);
+        let trimmedText = text.trim();
+        let box = document.getElementById("suggestionsBox");
+
+        // Show initial prompt if input is empty
+        if (trimmedText.length === 0) {
+            box.innerHTML = '<div class="text-center text-slate-400 p-2">Type a task idea to see suggestions...</div>';
+            return;
+        }
+        
+        // Show guidance if input is too short
+        if (trimmedText.length < 3) {
+            box.innerHTML = '<div class="text-center text-slate-400 p-2">Type at least 3 characters for suggestions...</div>';
+            return;
+        }
+        
+        // Debounce logic: calls fetchAISuggestions after 500ms pause
+        suggestionTimeout = setTimeout(() => {
+            fetchAISuggestions(trimmedText);
+        }, 500); 
+    }
+
+    async function fetchAISuggestions(text) {
+        let box = document.getElementById("suggestionsBox");
+        
+        box.innerHTML = '<div class="text-center text-indigo-400 animate-pulse">Loading AI suggestions...</div>';
+
+        try {
+            const response = await fetch(API_SUGGEST_ENDPOINT, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ partial_task: text })
+            });
+
+            if (!response.ok) { 
+                throw new Error("Suggestion service offline."); 
+            }
+
+            const data = await response.json();
+            const suggestions = data.suggestions || []; 
+
+            box.innerHTML = ""; 
+            
+            if (suggestions.length > 0) {
+                suggestions.forEach(s => {
+                    let btn = document.createElement("button");
+                    // Ensure full width and styling for list appearance
+                    btn.className = "block w-full text-left bg-slate-700 hover:bg-indigo-600/50 p-2 rounded-md transition duration-150";
+                    btn.textContent = s;
+                    btn.onclick = () => {
+                        document.getElementById("taskInput").value = s;
+                        // Clear suggestion box content after selection
+                        box.innerHTML = '<div class="text-center text-slate-400 p-2">Suggestion selected. Ready to add task.</div>';
+                    };
+                    box.appendChild(btn);
+                });
+            } else {
+                 box.innerHTML = '<div class="text-center text-slate-400 p-2">No AI suggestions found.</div>';
+            }
+
+        } catch (error) {
+            // Display connection error within the box
+            box.innerHTML = '<div class="text-center text-red-400">Could not connect to suggestion service.</div>';
+            console.warn("Suggestion fetch failed. API likely unreachable.");
+        }
+    }
+
+
+    // ===========================================
+    // AI TASK ANALYSIS LOGIC (Primary with Fallback)
+    // ===========================================
+
+    async function addTask() {
+      let input = document.getElementById("taskInput").value.trim();
+      if (!input) return alert("Please enter a task!");
+
+      const addButton = document.querySelector('button[onclick="addTask()"]');
+      const originalButtonText = addButton.textContent;
+      addButton.textContent = 'Analyzing Task...'; 
+      addButton.disabled = true;
+
+      let analyzed = null;
+
+      try {
+          const response = await fetch(API_ANALYZE_ENDPOINT, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ task_text: input })
+          });
+
+          if (!response.ok) {
+              throw new Error("AI analysis service failed to respond correctly or server is down.");
+          }
+
+          const data = await response.json();
+          analyzed = data;
+          
+          alert("AI analyzed and added task: " + analyzed.text);
+
+      } catch (error) {
+          console.error("Backend connection or API call failed. Falling back to local analysis.", error);
+          analyzed = analyzeTaskFallback(input);
+          alert("WARNING: AI Service Offline. Task added with simplified local analysis: " + analyzed.text);
+      } 
+      
+      if (analyzed) {
+          analyzed.status = analyzed.status || "Pending";
+          tasks.push(analyzed);
+          scheduleReminder(analyzed);
+          saveTasks();
+      }
+
+      document.getElementById("taskInput").value = "";
+      // Clear suggestion box content after successful submission
+      document.getElementById("suggestionsBox").innerHTML = '<div class="text-center text-slate-400 p-2">Type a task idea to see suggestions...</div>'; 
+
+      addButton.textContent = originalButtonText;
+      addButton.disabled = false;
+    }
+    
+    // ===========================================
+    // TASK EDITING LOGIC (UPDATE & SAVE)
+    // ===========================================
+
+    function openEditModal(index) {
+        const task = tasks[index];
+
+        document.getElementById('editTaskIndex').value = index;
+        document.getElementById('editText').value = task.text;
+        
+        document.getElementById('editDate').value = formatDateToInput(task.time);
+        
+        document.getElementById('editEffort').value = task.effort_score || 'Unspecified';
+
+        document.getElementById('editModal').classList.remove('hidden');
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').classList.add('hidden');
+    }
+
+    function saveEdit() {
+        const index = document.getElementById('editTaskIndex').value;
+        const task = tasks[index];
+        
+        const newText = document.getElementById('editText').value.trim();
+        const newDate = document.getElementById('editDate').value; 
+        const newEffort = document.getElementById('editEffort').value;
+        
+        task.text = newText;
+        task.effort_score = newEffort === 'Unspecified' ? 'Low' : newEffort;
+        
+        if (newDate) {
+            task.time = newDate; 
+        } else if (newDate === '' && task.time.match(/^\d{4}-\d{2}-\d{2}/)) {
+            task.time = 'unspecified';
+        }
+
+        task.urgent = (task.effort_score === 'High' || task.effort_score === 'Critical');
+
+        closeEditModal();
+        saveTasks();
+        showList();
+    }
+
+
+    // ===========================================
+    // TASK MANAGEMENT LOGIC (SHOW LIST & OVERDUE CHECK)
+    // ===========================================
+
+    function showList() {
+        let list = document.getElementById("taskList");
+        let completedList = document.getElementById("completedList");
+        list.innerHTML = "";
+        completedList.innerHTML = "";
+
+        const getTodayString = () => {
+            const d = new Date();
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+        const today = getTodayString();
+        
+        tasks.sort((a, b) => b.urgent - a.urgent);
+
+        const getEffortColor = (score) => {
+            switch (score) {
+                case 'Critical': return 'bg-red-700';
+                case 'High': return 'bg-yellow-600';
+                case 'Medium': return 'bg-indigo-600';
+                case 'Low': return 'bg-emerald-600';
+                default: return 'bg-slate-600';
+            }
+        };
+
+        // Pending Tasks
+        tasks.forEach((task, index) => {
+            let li = document.createElement("li");
+            
+            let statusTag = '📌 Pending'; 
+            let timeClass = '';
+            let isOverdue = false;
+
+            if (task.time && task.time.match(/^\d{4}-\d{2}-\d{2}/)) {
+                const taskDate = task.time.substring(0, 10);
+                if (taskDate < today) {
+                    statusTag = '🔴 OVERDUE';
+                    timeClass = 'text-red-400 font-extrabold'; 
+                    isOverdue = true;
+                } else if (taskDate === today) {
+                    statusTag = '🗓️ TODAY';
+                }
+            }
+            
+            if (task.urgent) {
+                statusTag = '🚨 URGENT';
+            } else if (isOverdue) {
+                 statusTag = '🔴 OVERDUE';
+            } else if (statusTag === '📌 Pending' && task.time !== 'unspecified') {
+                 statusTag = '🕒 SCHEDULED';
+            }
+            
+            let urgencyBorder = task.urgent || isOverdue ? 'border-l-4 border-red-500' : 'border-l-4 border-slate-500';
+
+            // Use dynamic text color based on theme
+            const textColor = document.body.classList.contains('light-mode') ? 'text-gray-800' : 'text-slate-100';
+
+            li.className = `p-4 rounded-md bg-slate-700/50 flex flex-col ${urgencyBorder}`;
+            
+            li.innerHTML = `
+              <div class="flex justify-between items-center mb-1">
+                <span onclick="openEditModal(${index})" class="cursor-pointer ${textColor} ${task.urgent || isOverdue ? 'text-red-600 font-extrabold tracking-tight' : 'font-semibold'} hover:text-indigo-600 transition duration-150">
+                  ${task.text}
+                </span>
+                <button onclick="completeTask(${index})" class="text-emerald-400 hover:text-emerald-500 font-bold ml-4 p-1 rounded transition duration-150">✔ Done</button>
+              </div>
+              
+              <p class="text-xs text-slate-400 pt-1 flex items-center justify-between">
+                <span onclick="openEditModal(${index})" class="cursor-pointer hover:text-slate-300 transition duration-150">
+                    <span class="${timeClass}">📅 ${task.time}</span> 
+                    | 🏷 ${task.category}
+                </span>
+                <span class="flex space-x-2">
+                    <span class="font-bold px-2 py-0.5 rounded-full text-slate-100 ${getEffortColor(task.effort_score)} text-[10px]">
+                        ${task.effort_score || 'Effort: N/A'}
+                    </span>
+                    <span class="font-bold px-2 py-0.5 rounded-full text-slate-100 bg-indigo-700/70 text-[10px]">
+                        ${statusTag}
+                    </span>
+                </span>
+              </p>
+              
+              <p class="text-xs text-slate-400 mt-2 italic">${task.note}</p>
+            `;
+            list.appendChild(li);
+        });
+
+        // Completed Tasks
+        completed.forEach(task => {
+            let li = document.createElement("li");
+            li.className = "p-4 rounded-md bg-slate-700/30 flex flex-col opacity-70 border-l-4 border-emerald-500";
+            
+            li.innerHTML = `
+              <div class="flex justify-between items-center">
+                <span class="line-through text-slate-400">${task.text}</span>
+                <span class="text-emerald-300 font-bold">✔ Completed</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">📅 ${task.time} | 🏷 ${task.category}</p>
+            `;
+            completedList.appendChild(li);
+        });
+
+        document.getElementById("addTaskScreen").classList.add("hidden");
+        document.getElementById("taskListScreen").classList.remove("hidden");
+    }
+
+    function backToAdd() {
+      document.getElementById("taskListScreen").classList.add("hidden");
+      document.getElementById("addTaskScreen").classList.remove("hidden");
+    }
+
+    function completeTask(index) {
+      tasks[index].status = "Done";
+      completed.push(tasks[index]);
+      tasks.splice(index, 1);
+      saveTasks();
+      showList();
+    }
+  </script>
+</body>
+</html>
+
